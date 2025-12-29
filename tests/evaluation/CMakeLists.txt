@@ -100,16 +100,9 @@ positive_test(magic_infbinding)
 positive_test(magic_lrg_attr_id)
 positive_test(magic_movies)
 positive_test(magic_names1)
-positive_test(magic_neglabel)
 positive_test(magic_negignored)
-if (NOT (MSVC AND (CMAKE_BUILD_TYPE MATCHES Debug)))
-  # When compiled in Debug with Visual Studio with the default stack size of 1MB,
-  # the interpreter fails with a stack overflow in Engine::execute().
-  # The cause is the number of lambda functions that are allocated as locals on the stack.
-  # The stack frame of Engine::execute is close to 30KB.
-  # The 1MB stack will overflow at depth ~34 of Engine::execute().
+positive_test(magic_neglabel)
 positive_test(magic_nqueens)
-endif ()
 positive_test(magic_perfect_numbers)
 positive_test(magic_posignored)
 positive_test(magic_poslabel)
@@ -172,3 +165,9 @@ positive_test(issue2160)
 add_subdirectory(issue2508)
 souffle_positive_functor_test(issue2508 CATEGORY evaluation)
 positive_test(issue2532)
+positive_test(issue2551)
+positive_test(issue2486)
+positive_test(issue2552)
+positive_test(issue2435)
+positive_test(issue2322)
+positive_test(issue2323)

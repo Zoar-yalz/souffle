@@ -23,7 +23,6 @@
 #include "ast/QualifiedName.h"
 #include "parser/SrcLocation.h"
 #include <iosfwd>
-#include <vector>
 
 namespace souffle::ast {
 
@@ -33,6 +32,10 @@ namespace souffle::ast {
  *
  * Format:
  *     A(x1,...) <= A(y1,...) :- <Body> .
+ *
+ *
+ * Internally the least and greatest atoms of the rule's head are added to the clause body literals at
+ * index `0` and `1` in `bodyLiterals`. The least atom of the rule's head is stored in the `head`.
  *
  */
 class SubsumptiveClause : public Clause {
