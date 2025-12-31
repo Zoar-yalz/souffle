@@ -144,6 +144,7 @@
 %token BTREE_QUALIFIER           "BTREE datastructure qualifier"
 %token BTREE_DELETE_QUALIFIER    "BTREE_DELETE datastructure qualifier"
 %token EQREL_QUALIFIER           "equivalence relation qualifier"
+%token POREL_QUALIFIER           "transitive relation qualifier"
 %token OVERRIDABLE_QUALIFIER     "relation qualifier overidable"
 %token INLINE_QUALIFIER          "relation qualifier inline"
 %token NO_INLINE_QUALIFIER       "relation qualifier no_inline"
@@ -722,6 +723,10 @@ relation_tags
   | relation_tags EQREL_QUALIFIER
     {
       $$ = driver.addReprTag(RelationTag::EQREL, @2, $1);
+    }  
+  | relation_tags POREL_QUALIFIER
+    {
+      $$ = driver.addReprTag(RelationTag::POREL, @2, $1);
     }
   /* Deprecated Qualifiers */
   | relation_tags OUTPUT_QUALIFIER
@@ -1929,6 +1934,7 @@ ident_token
   | CHOICEDOMAIN              { $$ = makeTokenTree(ast::TokenKind::Ident, "choice-domain"); }
   | COUNT                     { $$ = makeTokenTree(ast::TokenKind::Ident, "count"); }
   | EQREL_QUALIFIER           { $$ = makeTokenTree(ast::TokenKind::Ident, "eqrel"); }
+  | POREL_QUALIFIER           { $$ = makeTokenTree(ast::TokenKind::Ident, "porel"); }
   | FALSELIT                  { $$ = makeTokenTree(ast::TokenKind::Ident, "false"); }
   | INLINE_QUALIFIER          { $$ = makeTokenTree(ast::TokenKind::Ident, "inline"); }
   | INPUT_QUALIFIER           { $$ = makeTokenTree(ast::TokenKind::Ident, "input"); }

@@ -479,7 +479,10 @@ public:
         this->data.extendAndInsert(otherIndex->data);
     }
 };
-
+class PorelIndex : public interpreter::Index<2, 0, Porel> {
+public:
+    using Index<2, 0, Porel>::Index;
+};
 /**
  * A BtreeDelete index
  */

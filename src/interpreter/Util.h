@@ -21,6 +21,7 @@
 #include "souffle/datastructure/BTreeDelete.h"
 #include "souffle/datastructure/Brie.h"
 #include "souffle/datastructure/EquivalenceRelation.h"
+#include "souffle/datastructure/TransitiveRelation.h"
 #include "souffle/utility/ContainerUtil.h"
 #include "souffle/utility/MiscUtil.h"
 
@@ -143,13 +144,17 @@ namespace souffle::interpreter {
 
 #define FOR_EACH_EQREL(func, ...)\
     func(Eqrel, 2, 0, __VA_ARGS__)
+    
+#define FOR_EACH_POREL(func, ...)\
+    func(Porel, 2, 0, __VA_ARGS__)
 
 #define FOR_EACH(func, ...)                 \
     FOR_EACH_BTREE(func, __VA_ARGS__)       \
     FOR_EACH_BTREE_DELETE(func, __VA_ARGS__)\
     FOR_EACH_BRIE(func, __VA_ARGS__)        \
     FOR_EACH_PROVENANCE(func, __VA_ARGS__)  \
-    FOR_EACH_EQREL(func, __VA_ARGS__)
+    FOR_EACH_EQREL(func, __VA_ARGS__)       \
+    FOR_EACH_POREL(func, __VA_ARGS__)
 
 // clang-format on
 
@@ -307,4 +312,8 @@ using Provenance = btree_set<t_tuple<Arity>, comparator<Arity>, std::allocator<t
 template <std::size_t Arity, std::size_t AuxiliaryArity>
 using Eqrel = EquivalenceRelation<t_tuple<Arity>>;
 
+// Alias for Porel
+// Note: require Arity = 2.
+template <std::size_t Arity, std::size_t AuxiliaryArity>
+using Porel = TransitiveRelation<t_tuple<Arity>>;
 };  // namespace souffle::interpreter

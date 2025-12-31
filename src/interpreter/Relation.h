@@ -446,6 +446,11 @@ public:
     }
 };
 
+class PorelRelation : public Relation<2, 0, Porel> {
+public:
+    using Relation<2, 0, Porel>::Relation;
+};
+
 // The type of relation factory functions.
 using RelationFactory = Own<RelationWrapper> (*)(
         const ram::Relation& id, const ram::analysis::IndexCluster& indexSelection);
@@ -469,4 +474,9 @@ Own<RelationWrapper> createBrieRelation(
 // A factory for Eqrel index.
 Own<RelationWrapper> createEqrelRelation(
         const ram::Relation& id, const ram::analysis::IndexCluster& indexSelection);
-}  // namespace souffle::interpreter
+
+// A factory for Porel index.
+Own<RelationWrapper> createPorelRelation(
+        const ram::Relation& id, const ram::analysis::IndexCluster& indexSelection);
+}  
+// namespace souffle::interpreter

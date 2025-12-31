@@ -54,7 +54,6 @@ public:
     using element_type = TupleType;
     using value_type = typename TupleType::value_type;
 
-    static_assert(TupleType::arity == 2, "TransitiveRelation requires arity=2");
 
     /**
      * Operation hints for interpreter views.
@@ -63,7 +62,6 @@ public:
     struct operation_hints {
         void clear() {}
     };
-
 private:
     using GraphType = souffle::Graph<value_type>;
     using VertexSet = typename GraphType::VertexSet;
@@ -85,7 +83,8 @@ private:
     // sccReach[u] is a set of SCC ids reachable from u via 1+ edges.
     mutable bool sccReachStale = true;
     mutable std::unordered_map<std::size_t, std::unordered_set<std::size_t>> sccReach;
-
+    mutable std::size_t cachedSize = 0;
+    mutable bool sizeStale = true;
     // Helpers
     bool vertexExists(const value_type v) const {
         return g.contains(v);
@@ -363,6 +362,7 @@ public:
         bool changed = g.insert(a, b);
         if (changed) {
             dirty = true;
+            sizeStale = true;
             // Incrementally update SCC & reachability if already computed.
             updateSccAndReachOnInsert(a, b);
         }
@@ -576,11 +576,18 @@ public:
         return contains(t);
     }
 
+    std::size_t size() const {
+        if (sizeStale) {
+            updateSize();
+        }
+        return cachedSize;
+    }
+
     /**
      * Size of the closure (number of reachable pairs).
-     * Optimized: use precomputed SCC reachability.
+     * Optimized: for each SCC, contribution = |SCC nodes| * |reachable nodes from SCC|.
      */
-    std::size_t size() const {
+    void updateSize() const {
         computeSccDagReachabilityIfStale();
         
         // Precompute total reachable vertices for each SCC.
@@ -594,12 +601,13 @@ public:
             }
         }
         
-        // Sum over all sources.
+        // Sum: for each SCC, |SCC nodes| * |reachable nodes from SCC|.
         std::size_t total = 0;
-        for (const auto& from : g.vertices()) {
-            total += totalReach[vertexToScc.at(from)];
+        for (std::size_t scc = 0; scc < sccCount; ++scc) {
+            total += sccToVertices[scc].size() * totalReach[scc];
         }
-        return total;
+        cachedSize = total;
+        sizeStale = false;
     }
 
     bool empty() const {
@@ -616,6 +624,8 @@ public:
         sccTopoRev.clear();
         sccReachStale = true;
         sccReach.clear();
+        cachedSize = 0;
+        sizeStale = true;
     }
 
     /**

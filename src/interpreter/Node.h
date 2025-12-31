@@ -155,6 +155,8 @@ inline NodeType constructNodeType(Global&, std::string tokBase, const ram::Relat
         return map.at("I_" + tokBase + "_Provenance_" + arity + "_" + auxiliaryArity);
     } else if (rel.getRepresentation() == RelationRepresentation::EQREL) {
         return map.at("I_" + tokBase + "_Eqrel_" + arity + "_" + auxiliaryArity);
+    } else if (rel.getRepresentation() == RelationRepresentation::POREL) {
+        return map.at("I_" + tokBase + "_Porel_" + arity + "_" + auxiliaryArity);
     } else if(rel.getRepresentation() == RelationRepresentation::BTREE_DELETE) {
         return map.at("I_" + tokBase + "_BtreeDelete_" + arity + "_" + auxiliaryArity);
     } else  {

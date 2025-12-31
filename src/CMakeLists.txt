@@ -140,6 +140,7 @@ set(SOUFFLE_SOURCES
     interpreter/BTreeIndex.cpp
     interpreter/BTreeDeleteIndex.cpp
     interpreter/EqrelIndex.cpp
+    interpreter/PorelIndex.cpp
     interpreter/ProvenanceIndex.cpp
     parser/ParserDriver.cpp
     parser/ParserUtils.cpp

@@ -194,6 +194,7 @@ WS [ \t\r\v\f]
 "overridable"                         { return yy::parser::make_OVERRIDABLE_QUALIFIER(yylloc); }
 "printsize"                           { return yy::parser::make_PRINTSIZE_QUALIFIER(yylloc); }
 "eqrel"                               { return yy::parser::make_EQREL_QUALIFIER(yylloc); }
+"porel"                               { return yy::parser::make_POREL_QUALIFIER(yylloc); }
 "inline"                              { return yy::parser::make_INLINE_QUALIFIER(yylloc); }
 "no_inline"                           { return yy::parser::make_NO_INLINE_QUALIFIER(yylloc); }
 "magic"                               { return yy::parser::make_MAGIC_QUALIFIER(yylloc); }

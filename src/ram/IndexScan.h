@@ -41,7 +41,7 @@ using RamPattern = std::pair<RamBound, RamBound>;
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *  QUERY
  *   ...
- *	 FOR t1 IN X ON INDEX t1.c = t0.0
+ *	 FOR t1 IN X ON INDEX t1.1 = t0.0
  *	 ...
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
