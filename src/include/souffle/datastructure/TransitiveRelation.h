@@ -31,6 +31,8 @@
 #include "souffle/RamTypes.h"
 #include "souffle/datastructure/Graph.h"
 #include "souffle/utility/ContainerUtil.h"
+#include <roaring/roaring64map.hh>
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -80,9 +82,9 @@ private:
     // SCC DAG in reverse topological order (sinks to sources).
     mutable std::vector<std::size_t> sccTopoRev;
     // SCC DAG reachability (transitive closure) for Purdom-style redundancy checks.
-    // sccReach[u] is a set of SCC ids reachable from u via 1+ edges.
+    // sccReach[u] is a roaring bitmap of SCC ids reachable from u via 1+ edges.
     mutable bool sccReachStale = true;
-    mutable std::unordered_map<std::size_t, std::unordered_set<std::size_t>> sccReach;
+    mutable std::vector<roaring::Roaring64Map> sccReach;
     mutable std::size_t cachedSize = 0;
     mutable bool sizeStale = true;
     // Helpers
@@ -117,7 +119,8 @@ private:
         
         // Add vertices from all reachable SCCs.
         const auto& reachableSccs = sccReach.at(sccFrom);
-        for (const std::size_t scc : reachableSccs) {
+        for (auto it = reachableSccs.begin(); it != reachableSccs.end(); ++it) {
+            const std::size_t scc = static_cast<std::size_t>(*it);
             const auto& verts = sccToVertices[scc];
             result.insert(verts.begin(), verts.end());
         }
@@ -317,11 +320,14 @@ private:
         sccStale = false;
     }
 
-    // Helper: merge reachability sets (dst |= src)
-    static inline void mergeReachSets(std::unordered_set<std::size_t>& dst, const std::unordered_set<std::size_t>& src) {
-        for (const auto& x : src) {
-            dst.insert(x);
-        }
+    // Helper: merge reachability bitmaps (dst |= src)
+    static inline void mergeReachBitmaps(roaring::Roaring64Map& dst, const roaring::Roaring64Map& src) {
+        dst |= src;
+    }
+
+    // Helper: insert into roaring bitmap
+    static inline void insertIntoBitmap(roaring::Roaring64Map& bm, std::size_t val) {
+        bm.add(static_cast<uint64_t>(val));
     }
 
     void computeSccDagReachabilityIfStale() const {
@@ -330,19 +336,21 @@ private:
             return;
         }
 
-        sccReach.clear();
-        // Initialize empty sets for all SCCs.
-        for (std::size_t i = 0; i < sccCount; ++i) {
-            sccReach[i] = std::unordered_set<std::size_t>{};
+        // Initialize empty bitmaps for all SCCs.
+        sccReach.resize(sccCount);
+        for(std::size_t u = 0; u < sccCount; ++u) {
+            sccReach[u].clear();
         }
-
         // Dynamic programming on DAG in reverse topological order (sinks -> sources).
         // reach[u] = union_{v in succ(u)} ( reach[v] U {v} )
         for (const auto& u : sccTopoRev) {
             auto& ru = sccReach[u];
-            for (const auto& v : sccDag.successors(u)) {
-                mergeReachSets(ru, sccReach[v]);
-                ru.insert(v);
+            const auto& succs = sccDag.successors(u);
+            if (succs.empty()) continue;
+            
+            for (const auto& v : succs) {
+                mergeReachBitmaps(ru, sccReach[v]);
+                insertIntoBitmap(ru, v);
             }
         }
 
@@ -363,8 +371,9 @@ public:
         if (changed) {
             dirty = true;
             sizeStale = true;
-            // Incrementally update SCC & reachability if already computed.
-            updateSccAndReachOnInsert(a, b);
+            // Mark SCC cache as stale; will be recomputed lazily on demand.
+            sccStale = true;
+            sccReachStale = true;
         }
         return changed;
     }
@@ -397,7 +406,7 @@ private:
                 sccDag.insert(newScc);
                 sccTopoRev.insert(sccTopoRev.begin(), newScc);
                 if (!sccReachStale) {
-                    sccReach[newScc] = std::unordered_set<std::size_t>{};
+                    sccReach.resize(sccCount);
                 }
             } else {
                 // Two new vertices, edge a->b.
@@ -412,8 +421,8 @@ private:
                 sccTopoRev.insert(sccTopoRev.begin(), sccA);
                 sccTopoRev.insert(sccTopoRev.begin(), sccB);
                 if (!sccReachStale) {
-                    sccReach[sccB] = std::unordered_set<std::size_t>{};
-                    sccReach[sccA] = std::unordered_set<std::size_t>{sccB};
+                    sccReach.resize(sccCount);
+                    sccReach[sccA].add(static_cast<uint64_t>(sccB));
                 }
             }
             return;
@@ -429,8 +438,9 @@ private:
             sccTopoRev.insert(sccTopoRev.begin(), sccA);
             if (!sccReachStale) {
                 // sccA reaches sccB and everything sccB reaches.
+                sccReach.resize(sccCount);
                 sccReach[sccA] = sccReach[sccB];
-                sccReach[sccA].insert(sccB);
+                insertIntoBitmap(sccReach[sccA], sccB);
             }
             return;
         }
@@ -445,7 +455,7 @@ private:
             // b is a sink; insert at the front of reverse topo.
             sccTopoRev.insert(sccTopoRev.begin(), sccB);
             if (!sccReachStale) {
-                sccReach[sccB] = std::unordered_set<std::size_t>{};
+                sccReach.resize(sccCount);
                 // Update reachability: sccA and all its predecessors can now reach sccB.
                 updateReachabilityForNewSink(sccA, sccB);
             }
@@ -498,7 +508,7 @@ private:
             }
         }
         for (const auto& u : toUpdate) {
-            sccReach[u].insert(sccB);
+            insertIntoBitmap(sccReach[u], sccB);
         }
     }
 
@@ -508,8 +518,8 @@ private:
      */
     void propagateReachabilityFromEdge(std::size_t sccA, std::size_t sccB) {
         // Collect what sccB reaches (including sccB itself).
-        std::unordered_set<std::size_t> toAdd = sccReach[sccB];
-        toAdd.insert(sccB);
+        roaring::Roaring64Map toAdd = sccReach[sccB];
+        insertIntoBitmap(toAdd, sccB);
 
         // BFS/DFS backwards to find sccA and all its predecessors.
         std::unordered_set<std::size_t> toUpdate;
@@ -527,7 +537,7 @@ private:
             }
         }
         for (const auto& u : toUpdate) {
-            mergeReachSets(sccReach[u], toAdd);
+            mergeReachBitmaps(sccReach[u], toAdd);
         }
     }
 
@@ -596,7 +606,8 @@ public:
         for (std::size_t scc = 0; scc < sccCount; ++scc) {
             totalReach[scc] = sccToVertices[scc].size();
             const auto& reachableSccs = sccReach.at(scc);
-            for (const std::size_t reachScc : reachableSccs) {
+            for (auto it = reachableSccs.begin(); it != reachableSccs.end(); ++it) {
+                const std::size_t reachScc = static_cast<std::size_t>(*it);
                 totalReach[scc] += sccToVertices[reachScc].size();
             }
         }
@@ -698,18 +709,17 @@ public:
     /** Returns true if SCC `to` is reachable from SCC `from` via 1+ edges in the SCC DAG. */
     bool sccReaches(const std::size_t from, const std::size_t to) const {
         computeSccDagReachabilityIfStale();
-        auto it = sccReach.find(from);
-        if (it == sccReach.end()) return false;
-        return it->second.count(to) > 0;
+        if (from >= sccReach.size()) return false;
+        const auto& bm = sccReach[from];
+        return bm.contains(static_cast<uint64_t>(to));
     }
 
-    /** Get the full reachability set for an SCC. */
-    const std::unordered_set<std::size_t>& getSccReachSet(const std::size_t scc) const {
+    /** Get the full reachability bitmap for an SCC. */
+    const roaring::Roaring64Map& getSccReachBitmap(const std::size_t scc) const {
         computeSccDagReachabilityIfStale();
-        static const std::unordered_set<std::size_t> emptySet;
-        auto it = sccReach.find(scc);
-        if (it == sccReach.end()) return emptySet;
-        return it->second;
+        static const roaring::Roaring64Map emptyBitmap;
+        if (scc >= sccReach.size()) return emptyBitmap;
+        return sccReach[scc];
     }
 
     /**
@@ -864,7 +874,9 @@ public:
             sccSequence.clear();
             sccSequence.push_back(curFromScc);
             const auto& reachableSccs = rel->sccReach.at(curFromScc);
-            sccSequence.insert(sccSequence.end(), reachableSccs.begin(), reachableSccs.end());
+            for (auto it = reachableSccs.begin(); it != reachableSccs.end(); ++it) {
+                sccSequence.push_back(static_cast<std::size_t>(*it));
+            }
             
             sccSeqIdx = 0;
             

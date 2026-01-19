@@ -320,6 +320,10 @@ if (SOUFFLE_USE_LIBFFI)
       PUBLIC USE_LIBFFI)
 endif()
 
+# Link CRoaring library
+target_link_libraries(libsouffle PUBLIC roaring)
+target_link_libraries(compiled PUBLIC roaring)
+
 # The target names "souffle" for the library and "souffle" for the binary
 # clash in cmake.  I could just rename the library (since it's private)
 # but to keep things "familiar", I renamed the target to "libsouffle"
