@@ -26,5 +26,10 @@ Own<RelationWrapper> createPorelRelation(
     assert(id.getAuxiliaryArity() == 0 && "Transitive relation must have auxiliary arity size 0.");
     return mk<PorelRelation>(id.getName(), indexSelection);
 }
-
+Own<RelationWrapper> createTcrelRelation(
+        const ram::Relation& id, const ram::analysis::IndexCluster& indexSelection) {
+    assert(id.getArity() == 2 && "Transitive relation must have arity size 2.");
+    assert(id.getAuxiliaryArity() == 0 && "Transitive relation must have auxiliary arity size 0.");
+    return mk<TcrelRelation>(id.getName(), indexSelection);
+}
 }  // namespace souffle::interpreter

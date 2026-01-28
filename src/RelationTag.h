@@ -37,6 +37,7 @@ enum class RelationTag {
     BTREE_DELETE,  // use btree_delete data-structure
     EQREL,         // use union data-structure
     POREL,         // use graph data-structure
+    TCREL,         // use graph data-structure
 };
 
 /** Space of qualifiers that a relation can have */
@@ -60,6 +61,7 @@ enum class RelationRepresentation {
     BTREE_DELETE,  // use btree_delete data-structure
     EQREL,         // use union data-structure
     POREL,         // use graph data-structure
+    TCREL,         // use graph data-structure
     INFO,          // info relation for provenance
 };
 
@@ -72,7 +74,8 @@ inline bool isRelationRepresentationTag(const RelationTag& tag) {
         case RelationTag::BTREE:
         case RelationTag::BTREE_DELETE:
         case RelationTag::EQREL: 
-        case RelationTag::POREL: return true;
+        case RelationTag::POREL: 
+        case RelationTag::TCREL:return true;
         default: return false;
     }
 }
@@ -123,6 +126,7 @@ inline RelationRepresentation getRelationRepresentationFromTag(const RelationTag
         case RelationTag::BTREE_DELETE: return RelationRepresentation::BTREE_DELETE;
         case RelationTag::EQREL: return RelationRepresentation::EQREL;
         case RelationTag::POREL: return RelationRepresentation::POREL;
+        case RelationTag::TCREL: return RelationRepresentation::TCREL;
         default: fatal("invalid relation tag");
     }
 
@@ -145,6 +149,7 @@ inline std::ostream& operator<<(std::ostream& os, RelationTag qualifier) {
         case RelationTag::BTREE_DELETE: return os << "btree_delete";
         case RelationTag::EQREL: return os << "eqrel";
         case RelationTag::POREL: return os << "porel";
+        case RelationTag::TCREL: return os << "tcrel";
     }
 
     UNREACHABLE_BAD_CASE_ANALYSIS
@@ -173,6 +178,7 @@ inline std::ostream& operator<<(std::ostream& os, RelationRepresentation represe
         case RelationRepresentation::BRIE: return os << "brie";
         case RelationRepresentation::EQREL: return os << "eqrel";
         case RelationRepresentation::POREL: return os << "porel";
+        case RelationRepresentation::TCREL: return os << "tcrel";
         case RelationRepresentation::INFO: return os << "info";
         case RelationRepresentation::DEFAULT: return os;
     }

@@ -50,7 +50,7 @@
 
 namespace souffle {
 
-template <typename TupleType>
+template <typename TupleType,bool IncludeReflexive = true>
 class TransitiveRelation {
 public:
     using element_type = TupleType;
@@ -84,7 +84,11 @@ private:
     // SCC DAG reachability (transitive closure) for Purdom-style redundancy checks.
     // sccReach[u] is a roaring bitmap of SCC ids reachable from u via 1+ edges.
     mutable bool sccReachStale = true;
+    //TODO add 32bit switch
     mutable std::vector<roaring::Roaring64Map> sccReach;
+    // For non-reflexive mode: sccHasCycle[scc] = true if |SCC|>1 or vertex has self-loop
+    // This means vertices in the SCC can reach themselves via 1+ edges.
+    mutable std::vector<bool> sccHasCycle;
     mutable std::size_t cachedSize = 0;
     mutable bool sizeStale = true;
     // Helpers
@@ -92,13 +96,20 @@ private:
         return g.contains(v);
     }
 
-    // Reachability with 0-length path.
+    // Reachability check (respects IncludeReflexive template parameter).
     bool reachableOrSelf(const value_type from, const value_type to) const {
         if (!vertexExists(from) || !vertexExists(to)) {
             return false;
         }
         if (from == to) {
-            return true;
+            if constexpr (IncludeReflexive) {
+                return true;
+            } else {
+                // Non-reflexive: (x,x) only if x can reach itself via 1+ edges
+                computeSccIfStale();
+                const std::size_t scc = vertexToScc.at(from);
+                return sccHasCycle[scc];
+            }
         }
         return g.reaches(from, to);
     }
@@ -113,9 +124,24 @@ private:
         const std::size_t sccFrom = vertexToScc.at(from);
         VertexSet result;
         
-        // Add all vertices in the source SCC (includes 'from' itself).
+        // Add all vertices in the source SCC.
         const auto& sccFromVerts = sccToVertices[sccFrom];
-        result.insert(sccFromVerts.begin(), sccFromVerts.end());
+        if constexpr (IncludeReflexive) {
+            // Include all vertices in source SCC (includes 'from' itself).
+            result.insert(sccFromVerts.begin(), sccFromVerts.end());
+        } else {
+            // Non-reflexive: only include 'from' if SCC has a cycle
+            if (sccHasCycle[sccFrom]) {
+                result.insert(sccFromVerts.begin(), sccFromVerts.end());
+            } else {
+                // Single vertex SCC without self-loop: exclude 'from' itself
+                for (const auto& v : sccFromVerts) {
+                    if (v != from) {
+                        result.insert(v);
+                    }
+                }
+            }
+        }
         
         // Add vertices from all reachable SCCs.
         const auto& reachableSccs = sccReach.at(sccFrom);
@@ -140,6 +166,7 @@ private:
         sccTopoRev.clear();
         sccReachStale = true;
         sccReach.clear();
+        sccHasCycle.clear();
 
         const auto& vertices = g.vertices();
         const std::size_t n = vertices.size();
@@ -315,6 +342,21 @@ private:
         }
 
         sccTopoRev.assign(topo.rbegin(), topo.rend());
+
+        // Compute sccHasCycle: true if |SCC|>1 or any vertex in SCC has self-loop
+        sccHasCycle.resize(sccCount, false);
+        for (std::size_t scc = 0; scc < sccCount; ++scc) {
+            const auto& verts = sccToVertices[scc];
+            if (verts.size() > 1) {
+                // Multiple vertices in SCC means there's a cycle
+                sccHasCycle[scc] = true;
+            } else {
+                // Single vertex: check for self-loop
+                const auto& v = *verts.begin();
+                const auto& succs = g.successors(v);
+                sccHasCycle[scc] = (succs.find(v) != succs.end());
+            }
+        }
 
         sccReachStale = true;
         sccStale = false;
@@ -553,22 +595,31 @@ public:
     }
 
     /**
-     * Contains in the reflexive-transitive closure.
+     * Contains in the (reflexive-)transitive closure.
      * Uses SCC-based reachability for efficiency when SCC info is available.
+     * If IncludeReflexive=true: (x,x) is always reachable for any vertex x.
+     * If IncludeReflexive=false: (x,x) is reachable only if x can reach itself via 1+ edges.
      */
     bool contains(value_type a, value_type b) const {
         if (!vertexExists(a) || !vertexExists(b)) {
             return false;
         }
         if (a == b) {
-            return true;
+            if constexpr (IncludeReflexive) {
+                return true;
+            } else {
+                // Non-reflexive: (x,x) only if x is in a cycle (|SCC|>1 or self-loop)
+                computeSccIfStale();
+                const std::size_t sccA = vertexToScc.at(a);
+                return sccHasCycle[sccA];
+            }
         }
         // Use SCC-based reachability if available.
         if (!sccStale) {
             std::size_t sccA = vertexToScc.at(a);
             std::size_t sccB = vertexToScc.at(b);
             if (sccA == sccB) {
-                // Same SCC: a can reach b (within the SCC).
+                // Same SCC: a can reach b (within the SCC, a!=b guaranteed here).
                 return true;
             }
             // Different SCCs: check if sccA can reach sccB in the DAG.
@@ -596,6 +647,7 @@ public:
     /**
      * Size of the closure (number of reachable pairs).
      * Optimized: for each SCC, contribution = |SCC nodes| * |reachable nodes from SCC|.
+     * In non-reflexive mode, subtract self-pairs that are not in cycles.
      */
     void updateSize() const {
         computeSccDagReachabilityIfStale();
@@ -615,7 +667,16 @@ public:
         // Sum: for each SCC, |SCC nodes| * |reachable nodes from SCC|.
         std::size_t total = 0;
         for (std::size_t scc = 0; scc < sccCount; ++scc) {
-            total += sccToVertices[scc].size() * totalReach[scc];
+            const std::size_t sccSize = sccToVertices[scc].size();
+            total += sccSize * totalReach[scc];
+            
+            // In non-reflexive mode, subtract self-pairs for SCCs without cycles
+            if constexpr (!IncludeReflexive) {
+                if (!sccHasCycle[scc]) {
+                    // Each vertex in this SCC cannot reach itself
+                    total -= sccSize;
+                }
+            }
         }
         cachedSize = total;
         sizeStale = false;
@@ -635,6 +696,7 @@ public:
         sccTopoRev.clear();
         sccReachStale = true;
         sccReach.clear();
+        sccHasCycle.clear();
         cachedSize = 0;
         sizeStale = true;
     }
@@ -741,13 +803,17 @@ public:
 
         // ALL: iterate all sources, then all reachable targets.
         explicit iterator(const TransitiveRelation* rel) : rel(rel), mode(Mode::All) {
-            fromIt = rel->g.vertices().begin();
+            fromIt  = rel->g.vertices().begin();
             fromEnd = rel->g.vertices().end();
-            if (fromIt == fromEnd) {
-                isEndVal = true;
-                return;
+
+            while (fromIt != fromEnd) {
+                if (initForSource(*fromIt)) {
+                    isEndVal = false;
+                    return;
+                }
+                ++fromIt;  //skip to next scc
             }
-            initForSource(*fromIt);
+            isEndVal = true; 
         }
 
         // FROM: iterate reachable targets for a fixed source.
@@ -757,7 +823,10 @@ public:
                 isEndVal = true;
                 return;
             }
-            initForSource(from);
+            if (!initForSource(from)) {
+                isEndVal = true;   // 固定 source 本身无输出 => 迭代为空
+                return;
+            }        
         }
 
         // SINGLE: exactly one tuple.
@@ -817,13 +886,13 @@ public:
                     if (advanceWithinReachableNoEnd()) {
                         return *this;
                     }
-                    // Move to next source.
-                    ++fromIt;
-                    if (fromIt == fromEnd) {
-                        isEndVal = true;
-                        return *this;
-                    }
-                    initForSource(*fromIt);
+                    do {
+                        ++fromIt;
+                        if (fromIt == fromEnd) {
+                            isEndVal = true;
+                            return *this;
+                        }
+                    } while (!initForSource(*fromIt));
                     return *this;
             }
 
@@ -862,7 +931,7 @@ public:
         vertex_type fixedTo{};
         bool singleDone = true;
 
-        void initForSource(const vertex_type from) {
+        bool initForSource(const vertex_type from) {
             curFrom = from;
             
             // Ensure SCC info is computed.
@@ -888,11 +957,38 @@ public:
             if (vertIt == vertEnd) {
                 // Should not happen for non-empty graph.
                 isEndVal = true;
-                return;
+                return false;
             }
 
             current[0] = curFrom;
             current[1] = *vertIt;
+            
+            // In non-reflexive mode, skip self if the SCC has no cycle.
+            if constexpr (!IncludeReflexive) {
+                if (!skipSelfIfNeeded()) return false; 
+            }
+            return true;
+        }
+        
+        // Skip the current element if it's a self-pair and we're in non-reflexive mode
+        // and the SCC has no cycle (i.e., it's a singleton without self-loop).
+        bool skipSelfIfNeeded() {
+            if constexpr (!IncludeReflexive) {
+                while (!isEndVal && current[0] == current[1]) {
+                    // Check if this SCC has a real cycle.
+                    std::size_t curScc = sccSequence[sccSeqIdx];
+                    if (!rel->sccHasCycle[curScc]) {
+                        // No cycle, so skip this self-pair.
+                        if (!advanceWithinReachableNoEnd()) {
+                            return false;
+                        }
+                    } else {
+                        // SCC has a cycle, self-pair is valid.
+                        break;
+                    }
+                }
+            }
+            return true;
         }
 
         bool advanceWithinReachableNoEnd() {
@@ -910,6 +1006,30 @@ public:
             }
             
             current[1] = *vertIt;
+            
+            // In non-reflexive mode, if this is a self-pair and the SCC has no cycle, skip it.
+            if constexpr (!IncludeReflexive) {
+                while (current[0] == current[1]) {
+                    std::size_t curScc = sccSequence[sccSeqIdx];
+                    if (!rel->sccHasCycle[curScc]) {
+                        // Skip this self-pair.
+                        ++vertIt;
+                        while (vertIt == vertEnd) {
+                            ++sccSeqIdx;
+                            if (sccSeqIdx >= sccSequence.size()) {
+                                return false;
+                            }
+                            const auto& nextSccVerts = rel->sccToVertices[sccSequence[sccSeqIdx]];
+                            vertIt = nextSccVerts.begin();
+                            vertEnd = nextSccVerts.end();
+                        }
+                        current[1] = *vertIt;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
             return true;
         }
 

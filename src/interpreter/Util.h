@@ -148,13 +148,17 @@ namespace souffle::interpreter {
 #define FOR_EACH_POREL(func, ...)\
     func(Porel, 2, 0, __VA_ARGS__)
 
+#define FOR_EACH_TCREL(func, ...)\
+    func(Tcrel, 2, 0, __VA_ARGS__)
+
 #define FOR_EACH(func, ...)                 \
     FOR_EACH_BTREE(func, __VA_ARGS__)       \
     FOR_EACH_BTREE_DELETE(func, __VA_ARGS__)\
     FOR_EACH_BRIE(func, __VA_ARGS__)        \
     FOR_EACH_PROVENANCE(func, __VA_ARGS__)  \
     FOR_EACH_EQREL(func, __VA_ARGS__)       \
-    FOR_EACH_POREL(func, __VA_ARGS__)
+    FOR_EACH_POREL(func, __VA_ARGS__)       \
+    FOR_EACH_TCREL(func, __VA_ARGS__)
 
 // clang-format on
 
@@ -316,4 +320,6 @@ using Eqrel = EquivalenceRelation<t_tuple<Arity>>;
 // Note: require Arity = 2.
 template <std::size_t Arity, std::size_t AuxiliaryArity>
 using Porel = TransitiveRelation<t_tuple<Arity>>;
+template <std::size_t Arity, std::size_t AuxiliaryArity>
+using Tcrel = TransitiveRelation<t_tuple<Arity>,false>;
 };  // namespace souffle::interpreter
