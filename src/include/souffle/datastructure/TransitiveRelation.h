@@ -86,9 +86,9 @@ private:
     mutable bool sccReachStale = true;
     //TODO add 32bit switch
     mutable std::vector<roaring::Roaring64Map> sccReach;
-    // For non-reflexive mode: sccHasCycle[scc] = true if |SCC|>1 or vertex has self-loop
+    // For non-reflexive mode: sccHasCycle[scc] = 1 if |SCC|>1 or vertex has self-loop
     // This means vertices in the SCC can reach themselves via 1+ edges.
-    mutable std::vector<bool> sccHasCycle;
+    mutable std::vector<uint8_t> sccHasCycle;
     mutable std::size_t cachedSize = 0;
     mutable bool sizeStale = true;
     // Helpers
@@ -108,7 +108,7 @@ private:
                 // Non-reflexive: (x,x) only if x can reach itself via 1+ edges
                 computeSccIfStale();
                 const std::size_t scc = vertexToScc.at(from);
-                return sccHasCycle[scc];
+                return sccHasCycle[scc]!=0;
             }
         }
         return g.reaches(from, to);
@@ -343,13 +343,13 @@ private:
 
         sccTopoRev.assign(topo.rbegin(), topo.rend());
 
-        // Compute sccHasCycle: true if |SCC|>1 or any vertex in SCC has self-loop
-        sccHasCycle.resize(sccCount, false);
+        // Compute sccHasCycle: true(1) if |SCC|>1 or any vertex in SCC has self-loop
+        sccHasCycle.resize(sccCount, 0);
         for (std::size_t scc = 0; scc < sccCount; ++scc) {
             const auto& verts = sccToVertices[scc];
             if (verts.size() > 1) {
                 // Multiple vertices in SCC means there's a cycle
-                sccHasCycle[scc] = true;
+                sccHasCycle[scc] = 1;
             } else {
                 // Single vertex: check for self-loop
                 const auto& v = *verts.begin();
@@ -611,7 +611,7 @@ public:
                 // Non-reflexive: (x,x) only if x is in a cycle (|SCC|>1 or self-loop)
                 computeSccIfStale();
                 const std::size_t sccA = vertexToScc.at(a);
-                return sccHasCycle[sccA];
+                return sccHasCycle[sccA]!=0;
             }
         }
         // Use SCC-based reachability if available.
@@ -672,7 +672,7 @@ public:
             
             // In non-reflexive mode, subtract self-pairs for SCCs without cycles
             if constexpr (!IncludeReflexive) {
-                if (!sccHasCycle[scc]) {
+                if (sccHasCycle[scc]==0) {
                     // Each vertex in this SCC cannot reach itself
                     total -= sccSize;
                 }
@@ -977,7 +977,7 @@ public:
                 while (!isEndVal && current[0] == current[1]) {
                     // Check if this SCC has a real cycle.
                     std::size_t curScc = sccSequence[sccSeqIdx];
-                    if (!rel->sccHasCycle[curScc]) {
+                    if (rel->sccHasCycle[curScc]==0) {
                         // No cycle, so skip this self-pair.
                         if (!advanceWithinReachableNoEnd()) {
                             return false;
@@ -1011,7 +1011,7 @@ public:
             if constexpr (!IncludeReflexive) {
                 while (current[0] == current[1]) {
                     std::size_t curScc = sccSequence[sccSeqIdx];
-                    if (!rel->sccHasCycle[curScc]) {
+                    if (rel->sccHasCycle[curScc]==0) {
                         // Skip this self-pair.
                         ++vertIt;
                         while (vertIt == vertEnd) {
